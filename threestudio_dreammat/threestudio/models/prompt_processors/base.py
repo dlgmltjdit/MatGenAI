@@ -229,6 +229,8 @@ class PromptProcessor(BaseObject):
         # index of words that can potentially be removed
         prompt_debiasing_mask_ids: Optional[List[int]] = None
 
+        target_prompt: str = "A golden axe"
+
     cfg: Config
 
     @rank_zero_only
@@ -526,8 +528,10 @@ class PromptProcessor(BaseObject):
 
         return debiased_prompts
 
-    def __call__(self) -> PromptProcessorOutput:
-        return PromptProcessorOutput(
+    def __call__(self) -> Dict[str, PromptProcessorOutput]:
+        
+        # Create base output
+        base_output = PromptProcessorOutput(
             text_embeddings=self.text_embeddings,
             uncond_text_embeddings=self.uncond_text_embeddings,
             null_text_embeddings=self.null_text_embeddings,
@@ -541,3 +545,62 @@ class PromptProcessor(BaseObject):
             perp_neg_f_fs=self.cfg.perp_neg_f_fs,
             perp_neg_f_sf=self.cfg.perp_neg_f_sf,
         )
+
+        # For target mesh, use target_prompt if available
+        # Store original prompt and view-dependent prompts
+        original_prompt = self.prompt
+        original_prompts_vd = self.prompts_vd
+        original_negative_prompts_vd = self.negative_prompts_vd
+
+        # Set target prompt
+        self.prompt = self.preprocess_prompt(self.cfg.target_prompt)
+        
+        # Update view-dependent prompts for target
+        if self.cfg.use_prompt_debiasing:
+            prompts = self.get_debiased_prompt(self.prompt)
+            self.prompts_vd = [
+                d.prompt(prompt) for d, prompt in zip(self.directions, prompts)
+            ]
+        else:
+            self.prompts_vd = [
+                self.cfg.get(f"prompt_{d.name}", None) or d.prompt(self.prompt)
+                for d in self.directions
+            ]
+        
+        self.negative_prompts_vd = [
+            d.negative_prompt(self.negative_prompt) for d in self.directions
+        ]
+
+        # Prepare and load text embeddings for target
+        self.prepare_text_embeddings()
+        self.load_text_embeddings()
+
+        # Create target output
+        target_output = PromptProcessorOutput(
+            text_embeddings=self.text_embeddings,
+            uncond_text_embeddings=self.uncond_text_embeddings,
+            null_text_embeddings=self.null_text_embeddings,
+            text_embeddings_vd=self.text_embeddings_vd,
+            uncond_text_embeddings_vd=self.uncond_text_embeddings_vd,
+            directions=self.directions,
+            direction2idx=self.direction2idx,
+            use_perp_neg=self.cfg.use_perp_neg,
+            perp_neg_f_sb=self.cfg.perp_neg_f_sb,
+            perp_neg_f_fsb=self.cfg.perp_neg_f_fsb,
+            perp_neg_f_fs=self.cfg.perp_neg_f_fs,
+            perp_neg_f_sf=self.cfg.perp_neg_f_sf,
+        )
+
+        # Restore original prompt and view-dependent prompts
+        self.prompt = original_prompt
+        self.prompts_vd = original_prompts_vd
+        self.negative_prompts_vd = original_negative_prompts_vd
+
+        # Reload original embeddings
+        self.prepare_text_embeddings()
+        self.load_text_embeddings()
+        
+        return {
+            'target': target_output,
+            'other': base_output
+        }

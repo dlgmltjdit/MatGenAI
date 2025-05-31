@@ -32,6 +32,7 @@ system:
   init_height: 512
   save_train_image: true
   save_train_image_iter: 1000
+  target_prompt: ???
 
   geometry_type: "dreammat-mesh"
   geometry:

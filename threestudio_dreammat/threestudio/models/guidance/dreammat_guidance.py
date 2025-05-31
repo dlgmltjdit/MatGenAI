@@ -624,4 +624,3 @@ class StableDiffusionLightGuidance(BaseObject):
             and global_step > self.cfg.control_anneal_start_step
         ):
             self.cfg.condition_scales = self.cfg.condition_scales_anneal
-    

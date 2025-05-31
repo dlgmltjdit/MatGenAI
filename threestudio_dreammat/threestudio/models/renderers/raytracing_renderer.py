@@ -99,8 +99,11 @@ class RaytraceRender(Rasterizer):
     ) -> None:
         super().configure(geometry, material, background)
         self.ctx = NVDiffRasterizerContext(self.cfg.context_type, get_device())
-        self.mesh = self.geometry.isosurface()
-        self.ray_tracer = RayTracer(self.mesh.v_pos, self.mesh.t_pos_idx)
+        self.meshes = self.geometry.isosurface()
+        self.ray_tracers = {
+            name: RayTracer(mesh.v_pos, mesh.t_pos_idx)
+            for name, mesh in self.meshes.items()
+        }
         self.material.set_raytracer(lambda o,d: self.trace(o,d))
 
         self.change_type = 'gaussian'
@@ -120,106 +123,103 @@ class RaytraceRender(Rasterizer):
         **kwargs
     ):
         batch_size = mvp_mtx.shape[0]
-        v_pos_clip: Float[Tensor, "B Nv 4"] = self.ctx.vertex_transform(self.mesh.v_pos, mvp_mtx)
-        rast, _ = self.ctx.rasterize(v_pos_clip, self.mesh.t_pos_idx, (height, width))
-        mask = rast[..., 3:] > 0
-        selector = mask[..., 0].reshape(batch_size,width*height)
-        mask_aa = self.ctx.antialias(mask.float(), rast, v_pos_clip, self.mesh.t_pos_idx)
-
-        min_val=0.3
-        depth = (rast[..., 2:3] ).float()
-        depth[mask]=1. / (depth[mask] + 1e-6)
-        depth_max = depth[mask].max()
-        depth_min = depth[mask].min()
-        depth[mask] = (1 - min_val) *(depth[mask] - depth_min) / (depth_max - depth_min + 1e-6) + min_val
-
-        gb_normal, _ = self.ctx.interpolate_one(self.mesh.v_nrm, rast, self.mesh.t_pos_idx)
-        gb_normal = F.normalize(gb_normal, dim=-1)
-
-        gb_normal=gb_normal.reshape(batch_size,width*height,3)
-        normal_controlnet=self.compute_controlnet_normals(gb_normal[selector],w2c,batch_size)
-        background=torch.tensor([0.5,0.5,1.0]).reshape(1,1,1,3).repeat(batch_size,width,height,1).to(self.device)
-        #background=torch.ones((batch_size,width,height,3)).to(self.device)
-        gb_normal_aa=torch.ones_like(gb_normal).to(self.device)
-        gb_normal_aa[selector]=normal_controlnet
-        gb_normal_aa=gb_normal_aa.reshape(batch_size,height,width,3)
-        gb_normal_aa = torch.lerp(background, gb_normal_aa, mask.float())
-        gb_normal_aa = self.ctx.antialias(gb_normal_aa, rast, v_pos_clip, self.mesh.t_pos_idx)
+        outputs = {}
         
-        
-        gb_pos, _ = self.ctx.interpolate_one(self.mesh.v_pos, rast, self.mesh.t_pos_idx)
-        #gb_viewdirs = F.normalize(gb_pos - camera_positions[:, None, None, :], dim=-1)
-        gb_viewdirs = -rays_d.reshape(batch_size,-1,3)
+        # Process each mesh type
+        for mesh_type, mesh in self.meshes.items():
+            v_pos_clip: Float[Tensor, "B Nv 4"] = self.ctx.vertex_transform(mesh.v_pos, mvp_mtx)
+            rast, _ = self.ctx.rasterize(v_pos_clip, mesh.t_pos_idx, (height, width))
+            mask = rast[..., 3:] > 0
+            selector = mask[..., 0].reshape(batch_size,width*height)
+            mask_aa = self.ctx.antialias(mask.float(), rast, v_pos_clip, mesh.t_pos_idx)
 
-        
-        gb_pos=gb_pos.reshape(batch_size,width*height,3)
-        
-        #gb_viewdirs=gb_viewdirs.reshape(batch_size,width*height,3)
-        
-        positions = gb_pos[selector]
+            min_val=0.3
+            depth = (rast[..., 2:3] ).float()
+            depth[mask]=1. / (depth[mask] + 1e-6)
+            depth_max = depth[mask].max()
+            depth_min = depth[mask].min()
+            depth[mask] = (1 - min_val) *(depth[mask] - depth_min) / (depth_max - depth_min + 1e-6) + min_val
 
-        if self.geometry.cfg.n_input_dims==3:
-            x = self.get_orthogonal_directions(gb_normal[selector])
-            y = torch.cross(gb_normal[selector],x)
-            ang = torch.rand(positions.shape[0],1).to(self.device)*np.pi*2
-            if self.change_type=='constant':
-                change = (torch.cos(ang) * x + torch.sin(ang) * y) * self.change_eps
-            elif self.change_type=='gaussian':
-                eps = torch.normal(mean=0.0, std=self.change_eps, size=[x.shape[0], 1]).to(self.device)
-                change = (torch.cos(ang) * x + torch.sin(ang) * y) * eps
-            else:
-                raise NotImplementedError
+            gb_normal, _ = self.ctx.interpolate_one(mesh.v_nrm, rast, mesh.t_pos_idx)
+            gb_normal = F.normalize(gb_normal, dim=-1)
+
+            gb_normal=gb_normal.reshape(batch_size,width*height,3)
+            normal_controlnet=self.compute_controlnet_normals(gb_normal[selector],w2c,batch_size)
+            background=torch.tensor([0.5,0.5,1.0]).reshape(1,1,1,3).repeat(batch_size,width,height,1).to(self.device)
+            gb_normal_aa=torch.ones_like(gb_normal).to(self.device)
+            gb_normal_aa[selector]=normal_controlnet
+            gb_normal_aa=gb_normal_aa.reshape(batch_size,height,width,3)
+            gb_normal_aa = torch.lerp(background, gb_normal_aa, mask.float())
+            gb_normal_aa = self.ctx.antialias(gb_normal_aa, rast, v_pos_clip, mesh.t_pos_idx)
             
-            positions_jitter = gb_pos[selector] + change
-            geo_out = self.geometry(positions, output_normal=False)
-            geo_out_jitter = self.geometry(positions_jitter,output_normal=False)
+            gb_pos, _ = self.ctx.interpolate_one(mesh.v_pos, rast, mesh.t_pos_idx)
+            gb_viewdirs = -rays_d.reshape(batch_size,-1,3)
+            gb_pos=gb_pos.reshape(batch_size,width*height,3)
+            positions = gb_pos[selector]
 
-        elif self.geometry.cfg.n_input_dims==2:
-            gb_texc, _ = self.ctx.interpolate_one(self.mesh.v_tex, rast, self.mesh.t_tex_idx.int())
-            gb_texc=gb_texc.reshape(batch_size,width*height,2)
-            geo_out = self.geometry(gb_texc[selector], output_normal=False)
-            geo_out_jitter = self.geometry(gb_texc[selector] + torch.normal(mean=0, std=0.005, size=gb_texc[selector].shape, device=self.device))
-        else:
-            raise NotImplementedError()
-        
-        shade_outputs,mat_reg_loss = self.material(positions, geo_out['features'], geo_out_jitter['features'], gb_viewdirs[selector], gb_normal[selector], env_id)
+            if self.geometry.cfg.n_input_dims==3:
+                x = self.get_orthogonal_directions(gb_normal[selector])
+                y = torch.cross(gb_normal[selector],x)
+                ang = torch.rand(positions.shape[0],1).to(self.device)*np.pi*2
+                if self.change_type=='constant':
+                    change = (torch.cos(ang) * x + torch.sin(ang) * y) * self.change_eps
+                elif self.change_type=='gaussian':
+                    eps = torch.normal(mean=0.0, std=self.change_eps, size=[x.shape[0], 1]).to(self.device)
+                    change = (torch.cos(ang) * x + torch.sin(ang) * y) * eps
+                else:
+                    raise NotImplementedError
+                
+                positions_jitter = gb_pos[selector] + change
+                geo_out = self.geometry(positions, output_normal=False)
+                geo_out_jitter = self.geometry(positions_jitter,output_normal=False)
 
-        
+            elif self.geometry.cfg.n_input_dims==2:
+                gb_texc, _ = self.ctx.interpolate_one(mesh.v_tex, rast, mesh.t_tex_idx.int())
+                gb_texc=gb_texc.reshape(batch_size,width*height,2)
+                geo_out = self.geometry(gb_texc[selector], output_normal=False)
+                geo_out_jitter = self.geometry(gb_texc[selector] + torch.normal(mean=0, std=0.005, size=gb_texc[selector].shape, device=self.device))
+            else:
+                raise NotImplementedError()
+            
+            shade_outputs,mat_reg_loss = self.material(positions, geo_out['features'], geo_out_jitter['features'], gb_viewdirs[selector], gb_normal[selector], env_id)
 
-        color=torch.ones((batch_size,height*width,3),requires_grad=True).to(self.device)
-        metalness=torch.ones((batch_size,height*width,1)).to(self.device)
-        roughness=torch.ones((batch_size,height*width,1)).to(self.device)
-        albedo=torch.ones((batch_size,height*width,3)).to(self.device)
-        specular_light=torch.ones((batch_size,height*width,3)).to(self.device)
-        diffuse_light=torch.ones((batch_size,height*width,3)).to(self.device)
-        specular_color=torch.ones((batch_size,height*width,3)).to("cuda")
-        diffuse_color=torch.ones((batch_size,height*width,3)).to("cuda")
+            color=torch.ones((batch_size,height*width,3),requires_grad=True).to(self.device)
+            metalness=torch.ones((batch_size,height*width,1)).to(self.device)
+            roughness=torch.ones((batch_size,height*width,1)).to(self.device)
+            albedo=torch.ones((batch_size,height*width,3)).to(self.device)
+            specular_light=torch.ones((batch_size,height*width,3)).to(self.device)
+            diffuse_light=torch.ones((batch_size,height*width,3)).to(self.device)
+            specular_color=torch.ones((batch_size,height*width,3)).to("cuda")
+            diffuse_color=torch.ones((batch_size,height*width,3)).to("cuda")
 
-        color[selector]=shade_outputs['color']
-        color_aa = self.ctx.antialias(color.reshape(batch_size,height,width,3), rast, v_pos_clip, self.mesh.t_pos_idx)
+            color[selector]=shade_outputs['color']
+            color_aa = self.ctx.antialias(color.reshape(batch_size,height,width,3), rast, v_pos_clip, mesh.t_pos_idx)
 
-        metalness[selector]=shade_outputs['metalness'].detach()
-        roughness[selector]=shade_outputs['roughness'].detach()
-        albedo[selector]=shade_outputs['albedo'].detach()
-        specular_light[selector]=shade_outputs['specular_lights'].detach()
-        diffuse_light[selector]=shade_outputs['diffuse_lights'].detach()
-        specular_color[selector]=shade_outputs['specular_colors']
-        diffuse_color[selector]=shade_outputs['diffuse_colors']
+            metalness[selector]=shade_outputs['metalness'].detach()
+            roughness[selector]=shade_outputs['roughness'].detach()
+            albedo[selector]=shade_outputs['albedo'].detach()
+            specular_light[selector]=shade_outputs['specular_lights'].detach()
+            diffuse_light[selector]=shade_outputs['diffuse_lights'].detach()
+            specular_color[selector]=shade_outputs['specular_colors']
+            diffuse_color[selector]=shade_outputs['diffuse_colors']
 
-        return {
-            "comp_rgb": color_aa,
-            "opacity":mask_aa,
-            "comp_depth":depth,
-            "comp_normal":gb_normal_aa,#normal_controlnet.reshape(batch_size,height,width,3),#
-            'albedo':albedo.reshape(batch_size,height,width,3),
-            'metalness':metalness.reshape(batch_size,height,width,1),
-            'roughness':roughness.reshape(batch_size,height,width,1),
-            'specular_light':specular_light.reshape(batch_size,height,width,3),
-            'diffuse_light':diffuse_light.reshape(batch_size,height,width,3),
-            'specular_color':specular_color.reshape(batch_size,height,width,3),
-            'diffuse_color':diffuse_color.reshape(batch_size,height,width,3),
-            'loss_mat_reg':mat_reg_loss
+            # Store outputs for this mesh type
+            outputs[mesh_type] = {
+                "comp_rgb": color_aa,
+                "opacity": mask_aa,
+                "comp_depth": depth,
+                "comp_normal": gb_normal_aa,
+                'albedo': albedo.reshape(batch_size,height,width,3),
+                'metalness': metalness.reshape(batch_size,height,width,1),
+                'roughness': roughness.reshape(batch_size,height,width,1),
+                'specular_light': specular_light.reshape(batch_size,height,width,3),
+                'diffuse_light': diffuse_light.reshape(batch_size,height,width,3),
+                'specular_color': specular_color.reshape(batch_size,height,width,3),
+                'diffuse_color': diffuse_color.reshape(batch_size,height,width,3),
+                'loss_mat_reg': mat_reg_loss if mesh_type == 'target' else mat_reg_loss * 0.5
             }
+
+        return outputs
     
     def forward__(
         self,
@@ -315,8 +315,9 @@ class RaytraceRender(Rasterizer):
         otho = F.normalize(otho, dim=-1)
         return otho
     
-    def trace(self, rays_o, rays_d):
-        inters, normals, depth = self.ray_tracer.trace(rays_o, rays_d)
+    def trace(self, rays_o, rays_d, mesh_type: str = 'target'):
+        ray_tracer = self.ray_tracers[mesh_type]
+        inters, normals, depth = ray_tracer.trace(rays_o, rays_d)
         depth = depth.reshape(*depth.shape, 1)
         normals = F.normalize(normals, dim=-1)
         miss_mask = depth >= 10

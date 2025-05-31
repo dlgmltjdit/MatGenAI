@@ -146,93 +146,117 @@ class DreamMatMesh(BaseExplicitGeometry):
                 raise ValueError(f"Mesh file {mesh_path} does not exist.")
 
             import trimesh
-
-            scene = trimesh.load(mesh_path)
-            if isinstance(scene, trimesh.Trimesh):
-                mesh = scene
-            elif isinstance(scene, trimesh.scene.Scene):
-                mesh = trimesh.Trimesh()
-                for obj in scene.geometry.values():
-                    mesh = trimesh.util.concatenate([mesh, obj])
-            else:
-                raise ValueError(f"Unknown mesh type at {mesh_path}.")
             
-            if not isinstance(mesh.visual, trimesh.visual.TextureVisuals):
-                mesh=mesh.unwrap()
-
-            # move to center
-            centroid = mesh.vertices.mean(0)
-            mesh.vertices = mesh.vertices - centroid
-
-            # align to up-z and front-x
-            dirs = ["+x", "+y", "+z", "-x", "-y", "-z"]
-            dir2vec = {
-                "+x": np.array([1, 0, 0]),
-                "+y": np.array([0, 1, 0]),
-                "+z": np.array([0, 0, 1]),
-                "-x": np.array([-1, 0, 0]),
-                "-y": np.array([0, -1, 0]),
-                "-z": np.array([0, 0, -1]),
+            # Load both target and other meshes
+            mesh_paths = {
+                'target': "load/shapes/objs/target.obj",
+                'other': "load/shapes/objs/other.obj"
             }
-            if (
-                self.cfg.shape_init_mesh_up not in dirs
-                or self.cfg.shape_init_mesh_front not in dirs
-            ):
-                raise ValueError(
-                    f"shape_init_mesh_up and shape_init_mesh_front must be one of {dirs}."
-                )
-            if self.cfg.shape_init_mesh_up[1] == self.cfg.shape_init_mesh_front[1]:
-                raise ValueError(
-                    "shape_init_mesh_up and shape_init_mesh_front must be orthogonal."
-                )
-            z_, x_ = (
-                dir2vec[self.cfg.shape_init_mesh_up],
-                dir2vec[self.cfg.shape_init_mesh_front],
-            )
-            y_ = np.cross(z_, x_)
-            std2mesh = np.stack([x_, y_, z_], axis=0).T
-            mesh2std = np.linalg.inv(std2mesh)
-
-            # scaling
-            scale = np.abs(mesh.vertices).max()
-            mesh.vertices = mesh.vertices / scale * self.cfg.shape_init_params
-            mesh.vertices = np.dot(mesh2std, mesh.vertices.T).T
-
-            v_pos = torch.tensor(mesh.vertices, dtype=torch.float32).to(self.device)
-            t_pos_idx = torch.tensor(mesh.faces, dtype=torch.int64).to(self.device)
-            v_normal = torch.tensor(np.ascontiguousarray(mesh.vertex_normals), dtype=torch.float32).to(self.device)
-            v_tex = torch.tensor(mesh.visual.uv, dtype=torch.float32).to(self.device)
+            
+            self.meshes = {}
+            for name, path in mesh_paths.items():
+                scene = trimesh.load(path)
+                if isinstance(scene, trimesh.Trimesh):
+                    mesh = scene
+                elif isinstance(scene, trimesh.scene.Scene):
+                    mesh = trimesh.Trimesh()
+                    for obj in scene.geometry.values():
+                        mesh = trimesh.util.concatenate([mesh, obj])
+                else:
+                    raise ValueError(f"Unknown mesh type at {path}.")
                 
-            self.mesh = Mesh(v_pos=v_pos,t_pos_idx=t_pos_idx, v_nrm=v_normal, v_tex=v_tex, t_tex_idx=t_pos_idx)
-            self.register_buffer(
-                "v_buffer",
-                v_pos,
-            )
-            self.register_buffer(
-                "vnrm_buffer",
-                v_normal,
-            )
-            self.register_buffer(
-                "vtex_buffer",
-                v_tex,
-            )
-            self.register_buffer(
-                "t_buffer",
-                t_pos_idx,
-            )
+                if not isinstance(mesh.visual, trimesh.visual.TextureVisuals):
+                    mesh = mesh.unwrap()
+
+                # move to center
+                centroid = mesh.vertices.mean(0)
+                mesh.vertices = mesh.vertices - centroid
+
+                # align to up-z and front-x
+                dirs = ["+x", "+y", "+z", "-x", "-y", "-z"]
+                dir2vec = {
+                    "+x": np.array([1, 0, 0]),
+                    "+y": np.array([0, 1, 0]),
+                    "+z": np.array([0, 0, 1]),
+                    "-x": np.array([-1, 0, 0]),
+                    "-y": np.array([0, -1, 0]),
+                    "-z": np.array([0, 0, -1]),
+                }
+                if (
+                    self.cfg.shape_init_mesh_up not in dirs
+                    or self.cfg.shape_init_mesh_front not in dirs
+                ):
+                    raise ValueError(
+                        f"shape_init_mesh_up and shape_init_mesh_front must be one of {dirs}."
+                    )
+                if self.cfg.shape_init_mesh_up[1] == self.cfg.shape_init_mesh_front[1]:
+                    raise ValueError(
+                        "shape_init_mesh_up and shape_init_mesh_front must be orthogonal."
+                    )
+                z_, x_ = (
+                    dir2vec[self.cfg.shape_init_mesh_up],
+                    dir2vec[self.cfg.shape_init_mesh_front],
+                )
+                y_ = np.cross(z_, x_)
+                std2mesh = np.stack([x_, y_, z_], axis=0).T
+                mesh2std = np.linalg.inv(std2mesh)
+
+                # scaling
+                scale = np.abs(mesh.vertices).max()
+                mesh.vertices = mesh.vertices / scale * self.cfg.shape_init_params
+                mesh.vertices = np.dot(mesh2std, mesh.vertices.T).T
+
+                v_pos = torch.tensor(mesh.vertices, dtype=torch.float32).to(self.device)
+                t_pos_idx = torch.tensor(mesh.faces, dtype=torch.int64).to(self.device)
+                v_normal = torch.tensor(np.ascontiguousarray(mesh.vertex_normals), dtype=torch.float32).to(self.device)
+                v_tex = torch.tensor(mesh.visual.uv, dtype=torch.float32).to(self.device)
+                
+                self.meshes[name] = Mesh(v_pos=v_pos, t_pos_idx=t_pos_idx, v_nrm=v_normal, v_tex=v_tex, t_tex_idx=t_pos_idx)
+                
+                # Register buffers for each mesh
+                self.register_buffer(
+                    f"v_buffer_{name}",
+                    v_pos,
+                )
+                self.register_buffer(
+                    f"vnrm_buffer_{name}",
+                    v_normal,
+                )
+                self.register_buffer(
+                    f"vtex_buffer_{name}",
+                    v_tex,
+                )
+                self.register_buffer(
+                    f"t_buffer_{name}",
+                    t_pos_idx,
+                )
+            
+            self.mesh = self.meshes
+            print(f"Loaded meshes: {list(self.meshes.keys())}")
 
         else:
             raise ValueError(
                 f"Unknown shape initialization type: {self.cfg.shape_init}"
             )
-        print(self.mesh.v_pos.device)
 
-    def isosurface(self) -> Mesh:
-        if hasattr(self, "mesh"):
-            return self.mesh
-        elif hasattr(self, "v_buffer"):
-            self.mesh = Mesh(v_pos=self.v_buffer, t_pos_idx=self.t_buffer, v_nrm=self.vnrm_buffer, v_tex=self.vtex_buffer)
-            return self.mesh
+    def isosurface(self) -> Dict[str, Mesh]:
+        if hasattr(self, "meshes"):
+            return self.meshes
+        elif hasattr(self, "v_buffer_target"):
+            return {
+                'target': Mesh(
+                    v_pos=self.v_buffer_target,
+                    t_pos_idx=self.t_buffer_target,
+                    v_nrm=self.vnrm_buffer_target,
+                    v_tex=self.vtex_buffer_target
+                ),
+                'other': Mesh(
+                    v_pos=self.v_buffer_other,
+                    t_pos_idx=self.t_buffer_other,
+                    v_nrm=self.vnrm_buffer_other,
+                    v_tex=self.vtex_buffer_other
+                )
+            }
         else:
             raise ValueError(f"custom mesh is not initialized")
 

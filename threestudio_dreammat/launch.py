@@ -101,7 +101,64 @@ def main(args, extras) -> None:
     # set a different seed for each device
     pl.seed_everything(cfg.seed + get_rank(), workers=True)
 
-    
+    # Generate submeshes if using random-camera-datamodule
+    if cfg.data_type == 'random-camera-datamodule':
+        print("Generating submeshes...")
+        try:
+            import numpy as np
+            import trimesh
+
+            # Load segmentation labels
+            seg_labels_path = "load/shapes/seg/knight.npy"
+            seg_labels = np.load(seg_labels_path)
+
+            # Target labels
+            target_labels = [3, 4, 5, 8, 9]
+            # Get face indices for target and other parts
+            target_face_indices = np.where(np.isin(seg_labels, target_labels))[0]
+            other_face_indices = np.where(~np.isin(seg_labels, target_labels))[0]
+
+            # Sort indices to maintain original order
+            target_face_indices = np.sort(target_face_indices)
+            other_face_indices = np.sort(other_face_indices)
+
+            # Create submesh OBJ files
+            original_mesh = trimesh.load("load/shapes/objs/knight.obj")
+            if isinstance(original_mesh, trimesh.Scene):
+                original_mesh = trimesh.util.concatenate(original_mesh.dump())
+            elif not isinstance(original_mesh, trimesh.Trimesh):
+                try:
+                    original_mesh = trimesh.util.concatenate(original_mesh)
+                except Exception as e:
+                    print(f"Warning: Could not convert loaded object to single Trimesh: {e}")
+
+            # Validate indices
+            max_face_idx = len(original_mesh.faces) - 1
+            valid_target_indices = target_face_indices[target_face_indices <= max_face_idx]
+            valid_other_indices = other_face_indices[other_face_indices <= max_face_idx]
+
+            # Generate target submesh
+            if len(valid_target_indices) > 0:
+                target_submesh = original_mesh.submesh([valid_target_indices], append=True)
+                target_output_path = "load/shapes/objs/target.obj"
+                os.makedirs(os.path.dirname(target_output_path), exist_ok=True)
+                target_submesh.export(target_output_path)
+                print(f"Target submesh saved: {target_output_path}")
+
+            # Generate other submesh
+            if len(valid_other_indices) > 0:
+                other_submesh = original_mesh.submesh([valid_other_indices], append=True)
+                other_output_path = "load/shapes/objs/other.obj"
+                os.makedirs(os.path.dirname(other_output_path), exist_ok=True)
+                other_submesh.export(other_output_path)
+                print(f"Other submesh saved: {other_output_path}")
+
+            print("Submesh generation completed successfully")
+
+        except Exception as e:
+            print(f"Error generating submeshes: {str(e)}")
+            sys.exit(1)
+
     system: BaseSystem = threestudio.find(cfg.system_type)(
         cfg.system, resumed=cfg.resume is not None
     )
