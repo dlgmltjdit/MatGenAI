@@ -3,6 +3,7 @@ from dataclasses import dataclass, field
 import cv2
 import numpy as np
 import torch
+import os
 
 import threestudio
 from threestudio.models.background.base import BaseBackground
@@ -41,16 +42,30 @@ class MeshExporter(Exporter):
         self.ctx = NVDiffRasterizerContext(self.cfg.context_type, self.device)
 
     def __call__(self) -> List[ExporterOutput]:
-        mesh: Mesh = self.geometry.isosurface()
+        meshes_dict: Dict[str, Mesh] = self.geometry.isosurface()
+        all_outputs: List[ExporterOutput] = []
 
-        if self.cfg.fmt == "obj-mtl":
-            return self.export_obj_with_mtl(mesh)
-        elif self.cfg.fmt == "obj":
-            return self.export_obj(mesh)
-        else:
-            raise ValueError(f"Unsupported mesh export format: {self.cfg.fmt}")
+        if not isinstance(meshes_dict, dict):
+            # Fallback for single mesh for compatibility if geometry returns a single mesh
+            meshes_dict = {"model": meshes_dict} 
 
-    def export_obj_with_mtl(self, mesh: Mesh) -> List[ExporterOutput]:
+        for mesh_name, mesh_object in meshes_dict.items():
+            if not isinstance(mesh_object, Mesh):
+                threestudio.warn(f"Skipping export for {mesh_name} as it is not a valid Mesh object, but {type(mesh_object)}.")
+                continue
+            
+            # Construct path with subdirectory for the mesh type
+            current_save_path_prefix = f"{mesh_name}/{self.cfg.save_name}"
+
+            if self.cfg.fmt == "obj-mtl":
+                all_outputs.extend(self.export_obj_with_mtl(mesh_object, current_save_path_prefix))
+            elif self.cfg.fmt == "obj":
+                all_outputs.extend(self.export_obj(mesh_object, current_save_path_prefix))
+            else:
+                raise ValueError(f"Unsupported mesh export format: {self.cfg.fmt}")
+        return all_outputs
+
+    def export_obj_with_mtl(self, mesh: Mesh, save_name_prefix: str) -> List[ExporterOutput]:
         params = {
             "mesh": mesh,
             "save_mat": True,
@@ -64,6 +79,8 @@ class MeshExporter(Exporter):
             "map_Pm": None,  # Metallic
             "map_Pr": None,  # Roughness
             "map_format": self.cfg.texture_format,
+            # Pass the prefix to be included in texture file paths within the MTL file
+            "mtl_path_prefix": os.path.dirname(save_name_prefix) 
         }
 
         if self.cfg.save_uv:
@@ -132,11 +149,11 @@ class MeshExporter(Exporter):
             # TODO: map_Ks
         return [
             ExporterOutput(
-                save_name=f"{self.cfg.save_name}.obj", save_type="obj", params=params
+                save_name=f"{save_name_prefix}.obj", save_type="obj", params=params
             )
         ]
 
-    def export_obj(self, mesh: Mesh) -> List[ExporterOutput]:
+    def export_obj(self, mesh: Mesh, save_name_prefix: str) -> List[ExporterOutput]:
         params = {
             "mesh": mesh,
             "save_mat": False,
@@ -170,6 +187,6 @@ class MeshExporter(Exporter):
 
         return [
             ExporterOutput(
-                save_name=f"{self.cfg.save_name}.obj", save_type="obj", params=params
+                save_name=f"{save_name_prefix}.obj", save_type="obj", params=params
             )
         ]
