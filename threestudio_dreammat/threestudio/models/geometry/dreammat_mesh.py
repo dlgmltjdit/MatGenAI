@@ -165,6 +165,9 @@ class DreamMatMesh(BaseExplicitGeometry):
                 else:
                     raise ValueError(f"Unknown mesh type at {path}.")
                 
+                original_v_pos = torch.from_numpy(mesh.vertices).float().to(self.device)
+                original_v_nrm = torch.from_numpy(np.ascontiguousarray(mesh.vertex_normals)).float().to(self.device)
+
                 if not isinstance(mesh.visual, trimesh.visual.TextureVisuals):
                     mesh = mesh.unwrap()
 
@@ -211,7 +214,7 @@ class DreamMatMesh(BaseExplicitGeometry):
                 v_normal = torch.tensor(np.ascontiguousarray(mesh.vertex_normals), dtype=torch.float32).to(self.device)
                 v_tex = torch.tensor(mesh.visual.uv, dtype=torch.float32).to(self.device)
                 
-                self.meshes[name] = Mesh(v_pos=v_pos, t_pos_idx=t_pos_idx, v_nrm=v_normal, v_tex=v_tex, t_tex_idx=t_pos_idx)
+                self.meshes[name] = Mesh(v_pos=v_pos, t_pos_idx=t_pos_idx, v_nrm=v_normal, v_tex=v_tex, t_tex_idx=t_pos_idx, original_v_pos=original_v_pos, original_v_nrm=original_v_nrm)
                 
                 # Register buffers for each mesh
                 self.register_buffer(
