@@ -25,11 +25,28 @@ DreamMat: High-quality PBR Material Generation with Geometry- and Light-aware Di
 3. Download the pre-trained ControlNet checkpoints [here](https://pan.zju.edu.cn/share/78d6588ec65bcfa432ed22d262) or from [hugging face](https://huggingface.co/zzzyuqing/light-geo-controlnet), and put it to the `threestudio_dreammat/model/controlnet`
 4. A docker env can be found at https://hub.docker.com/repository/docker/zzzyuqing/dreammat_image/general
 
-### MatGenAI
+# MatGenAI
 We propose MatGenAI, a multi-pipeline DreamMat framework that integrates 3D mesh semantic segmentation (Sampart3D) with a Large Language Model (LLM). Our approach fix up the mismatch between semantic descriptions (text prompts) and local features.
 
-#### Limitation of dreammat
+### Limitation of dreammat
 ![](assets/example.png)
 
-#### Proposed pipeline
+## Method
+### Proposed pipeline
 ![](assets/pipeline_matgenai.png)
+
+### (a) Extended pipeline
+1. The input 3D mesh is segmented into sub-meshes based on semantic units.
+2. The semantic information of each sub-mesh is extracted in textual form using an LLM.
+3. It is extended into a sub-pipeline conditioned on (sub-mesh, semantic description).
+
+### (b) Training step
+1. Each pipeline independently predicts PBR materials by following the material prediction methodology of DreamMat.
+2. Each PBR material — Albedo, Metallic, and Roughness — is defined according to the hash-grid function.
+
+### (c) Texture export
+1. Each sub-mesh is normalized to a global coordinate system centered at the origin (0,0,0) by an affine transformation matrix.
+2. Therefore, a coordinate transformation process is performed to apply the generated sub-textures back to the original mesh .
+
+### results
+![](assets/results.png)
