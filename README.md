@@ -25,5 +25,7 @@ DreamMat: High-quality PBR Material Generation with Geometry- and Light-aware Di
 3. Download the pre-trained ControlNet checkpoints [here](https://pan.zju.edu.cn/share/78d6588ec65bcfa432ed22d262) or from [hugging face](https://huggingface.co/zzzyuqing/light-geo-controlnet), and put it to the `threestudio_dreammat/model/controlnet`
 4. A docker env can be found at https://hub.docker.com/repository/docker/zzzyuqing/dreammat_image/general
 
-### Method
+### MatGenAI
 We propose MatGenAI, a multi-pipeline DreamMat framework that integrates 3D mesh semantic segmentation (Sampart3D) with a Large Language Model (LLM). Our approach fix up the mismatch between semantic descriptions (text prompts) and local features.
+
+#### Limitation of dreammat
