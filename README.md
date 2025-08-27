@@ -29,3 +29,7 @@ DreamMat: High-quality PBR Material Generation with Geometry- and Light-aware Di
 We propose MatGenAI, a multi-pipeline DreamMat framework that integrates 3D mesh semantic segmentation (Sampart3D) with a Large Language Model (LLM). Our approach fix up the mismatch between semantic descriptions (text prompts) and local features.
 
 #### Limitation of dreammat
+![](assets/example.png)
+
+#### Proposed pipeline
+![](assets/pipeline_matgenai.png)
