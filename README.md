@@ -5,7 +5,6 @@ We propose MatGenAI, a multi-pipeline DreamMat framework that integrates 3D mesh
 ![](assets/example.png)
 
 ## Method
-### Proposed pipeline
 ![](assets/pipeline_matgenai.png)
 
 ### (a) Extended pipeline
@@ -24,7 +23,7 @@ We propose MatGenAI, a multi-pipeline DreamMat framework that integrates 3D mesh
 ## Conclusion
 The point of our research is to segment a 3D mesh into semantic units and automatically generate optimized text prompts for each part using a Large Language Model. This allows each pipeline to independently infer PBR materials based on prompts optimized for local features, resulting in textures that more accurately reflect semantic information. Furthermore, this methodology requires no additional training or fine-tuning, making it a practical solution for use in environments with limited GPU resources.
 
-### results
+## results
 ![](assets/results.png)
 
 # How to use
