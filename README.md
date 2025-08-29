@@ -47,3 +47,14 @@ threestudio_dreammat/load
 cd MatGenAI/MatGenAI/threestudio_dreammat
 sh cmd/run_examples.sh
 ```
+
+# Acknowledgement
+Our work heavily builds upon the following research. We are grateful to the original researchers for their contribution.
+
+* Zhang, Y., Liu, Y., et al. (2024). DreamMat: High-quality pbr material generation with geometry-
+and light-aware diffusion models. ACM Transactions on Graphics (TOG), 43(4), 1-18.
+[[Project Page]](https://zzzyuqing.github.io/dreammat.github.io/)
+
+* Yang, Y., Huang, Y., et al. (2024). SAMPart3D: Segment any part in 3d objects. arXiv preprint
+arXiv:2411.07184.
+[[Project Page]](https://github.com/Pointcept/SAMPart3D)
