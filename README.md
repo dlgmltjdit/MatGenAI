@@ -1,5 +1,5 @@
 # MatGenAI
-We propose MatGenAI, a multi-pipeline DreamMat framework that integrates 3D mesh semantic segmentation (Sampart3D) with a Large Language Model (LLM). Our approach fix up the mismatch between semantic descriptions (text prompts) and local features.
+We propose MatGenAI, a multi-pipeline DreamMat framework that integrates 3D mesh semantic segmentation with a Large Language Model. DreamMat uses a single text prompt to generate materials for an entire 3D model, limiting its ability to accurately map local features—like a 'golden axe'—to their corresponding parts. Our approach resolve this mismatch between semantic descriptions and local features.
 
 ### Limitation of dreammat
 ![](assets/example.png)
@@ -19,7 +19,10 @@ We propose MatGenAI, a multi-pipeline DreamMat framework that integrates 3D mesh
 
 ### (c) Texture export
 1. Each sub-mesh is normalized to a global coordinate system centered at the origin (0,0,0) by an affine transformation matrix.
-2. Therefore, a coordinate transformation process is performed to apply the generated sub-textures back to the original mesh .
+2. Therefore, a coordinate transformation process is performed to apply the generated sub-textures back to the original mesh.
+
+## Conclusion
+The point of our research is to segment a 3D mesh into semantic units and automatically generate optimized text prompts for each part using a Large Language Model. This allows each pipeline to independently infer PBR materials based on prompts optimized for local features, resulting in textures that more accurately reflect semantic information. Furthermore, this methodology requires no additional training or fine-tuning, making it a practical solution for use in environments with limited GPU resources.
 
 ### results
 ![](assets/results.png)
