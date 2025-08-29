@@ -1,5 +1,5 @@
 # MatGenAI
-We propose MatGenAI, a multi-pipeline DreamMat framework that integrates 3D mesh semantic segmentation with a Large Language Model. DreamMat uses a single text prompt to generate materials for an entire 3D model, limiting its ability to accurately map local features—like a 'golden axe'—to their corresponding parts. Our approach resolve this mismatch between semantic descriptions and local features.
+We propose MatGenAI, a multi-pipeline DreamMat framework that integrates 3D mesh semantic segmentation with a Large Language Model. DreamMat uses a single text prompt to generate materials for an entire 3D model, limiting its ability to accurately map local features—like a 'golden axe'—to their corresponding parts. Our approach resolves this mismatch between semantic descriptions and local features.
 
 ### Limitation of dreammat
 ![](assets/example.png)
@@ -32,11 +32,12 @@ You must follow the Installation Guide on each project's GitHub page.
 1. Install DreamMat for inference PBR Material
 [DreamMat](https://zzzyuqing.github.io/dreammat.github.io/)
 
-3. Prepare SAMPart3D for semantic segmentation
+2. Prepare SAMPart3D for semantic segmentation
 [SAMPart3D](https://github.com/Pointcept/SAMPart3D)
 
-5. To input your 3D mesh file (ex, knight.obj) into SAMPart3D and get a .npy file containing the per-part segmentation information as output.
-6. Instead of the knight example, use your own filenames and place them according to the structure below.
+3. To input your 3D mesh file (ex, knight.obj) into SAMPart3D and get a .npy file containing the per-part segmentation information as output.
+
+4. Instead of the knight example, use your own filenames and place them according to the structure below.
 ```
 threestudio_dreammat/load
 |-- shapes
@@ -45,7 +46,8 @@ threestudio_dreammat/load
     |-- seg
         |-- knight.npy
 ```
-6. Run MatGenAI.
+
+5. Run MatGenAI.
 ```
 cd MatGenAI/MatGenAI/threestudio_dreammat
 sh cmd/run_examples.sh
